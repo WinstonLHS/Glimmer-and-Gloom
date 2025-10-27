@@ -1,182 +1,163 @@
+from enum import Enum
+from typing import Any
 import pyautogui
 import time
 import keyboard
-import math
 import random
 
-GLIMMER_FILE_LOC = "glimmer.png" # The local file location of the glimmer button image
-GLOOM_FILE_LOC = "gloom.png" # The local file location of the gloom button image
+from pyscreeze import Box
 
-TILE_REMOVE_LENIENCY = 5 # The maximum number of pixels different two buttons can be before they're considered duplicates and one is pruned.
-TILE_SORT_LENIENCY = 5 # The maximum number of pixels different the top left y coordinate can be for buttons before they're considered not in the same row.
+from variables import *
 
-CLICK_DELAY = .1 # How much our default delay is before the next click is made.
+class TileKind(Enum):
+	UNKNOWN = 0
+	GLIMMER = 1
+	GLOOM = 2
 
-BAN_EVASION_MODE = True # If set to True, waits a little and moves the mouse a little to evade suspicion. If set to False, we're just being efficient.
-DELAY_FUZZING = .5 # The maximum amount of time we can delay a click.
-HOVER_FUZZING = (8, 8) # The maximum (and negative minumum) we can alter the mouse click position by.
-
-END_SCRIPT_KEY = "q" # Use this to quit the script immediately. HOLD the key, NOT spam it.
-MOUSE_EXIT_BOX = (2, 2) # Where we bring the mouse near to allow for an easy quit out.
-
-CONFIDENCE_VALUE = .7 # The confidence value we're searching the screen with. A lower number will lead to more false positives.
-
-TERMINAL_BOARD_PATTERNS = (
-	(0, 0, 0, 1, 0, 1, 0, 0, 1),
-	(0, 0, 0, 0, 1, 1, 1, 1, 0),
-	(0, 0, 1, 1, 0, 1, 0, 1, 0),
-	(1, 0, 1, 1, 0, 1, 1, 1, 1),
-	(0, 1, 0, 0, 1, 0, 0, 1, 0),
-	(1, 1, 1, 1, 0, 1, 1, 0, 1),
-	(0, 1, 0, 1, 0, 1, 1, 0, 0),
-	(0, 1, 1, 1, 1, 0, 0, 0, 0),
-	(1, 0, 0, 1, 0, 1, 0, 0, 0)
-)
+class Tile:
+	def __init__(self, kind: TileKind = TileKind.UNKNOWN, box: Box | None = None):
+		self.kind: TileKind = kind
+		self.box: Box | None = box
 
 class GameBoard:
 	def __init__(self):
-		self.tiles = [
-			[None] * 5,
-			[None] * 6,
-			[None] * 7,
-			[None] * 8,
-			[None] * 9,
-			[None] * 8,
-			[None] * 7,
-			[None] * 6,
-			[None] * 5,
+		self.grid: list[list[Tile]] = [
+			[Tile()] * 5,
+			[Tile()] * 6,
+			[Tile()] * 7,
+			[Tile()] * 8,
+			[Tile()] * 9,
+			[Tile()] * 8,
+			[Tile()] * 7,
+			[Tile()] * 6,
+			[Tile()] * 5,
 		]
 		self.solving_terminal = False
-		self.isSolved = False
+		self.is_solved = False
 		self.find_all()
 
 	def __str__(self):
-		string = ""
+		text = ""
 		i = 4
-		for row in self.tiles:
-			string += " " * abs(i)
-			for col in row:
-				if col[1] == "gloom":
-					string += "o "
-				elif col[1] == "glimmer":
-					string += "i "
-				else :
-					string += "? "
-			string += "\n"
-			i-=1
-		return string
+		for row in self.grid:
+			text += " " * abs(i)
+			for tile in row:
+				if tile.kind == TileKind.GLOOM:
+					text += "o "
+				elif tile.kind == TileKind.GLIMMER:
+					text += "i "
+				elif tile.kind == TileKind.UNKNOWN:
+					text += "? "
+				else:
+					raise ValueError("Developer error: undefined tile!")
+			text += "\n"
+			i -= 1
+		return text
 
 	def find_all(self):
-		tiles = []
-		for box in pyautogui.locateAllOnScreen(
-			GLOOM_FILE_LOC, 
-			confidence=CONFIDENCE_VALUE
-		):
-			tiles.append([box, "gloom"])
-		for box in pyautogui.locateAllOnScreen(
-			GLIMMER_FILE_LOC, 
-			confidence=CONFIDENCE_VALUE
-		):
-			tiles.append([box, "glimmer"])
+		raw_inferred_tiles: list[Tile] = []
+		for box in pyautogui.locateAllOnScreen("gloom.png", confidence=0.75):
+			raw_inferred_tiles.append(Tile(TileKind.GLOOM, box))
+		for box in pyautogui.locateAllOnScreen("glimmer.png", confidence=0.75):
+			raw_inferred_tiles.append(Tile(TileKind.GLIMMER, box))
 
-		dupes = []
-		i = 0
-		while(i < len(tiles)):
-			tile = tiles[i]
-			if i < (len(tiles) - 1):
-				for j in range(len(tiles) - i - 1):
-					compare_tile = tiles[j+i+1]
-					if abs(compare_tile[0].left - tile[0].left) < TILE_REMOVE_LENIENCY:
-						if abs(compare_tile[0].top - tile[0].top) < TILE_REMOVE_LENIENCY:
-							if compare_tile not in dupes:
-								dupes.append(compare_tile)
-			i+=1
+		sorted_inferred_tiles = sorted(raw_inferred_tiles, key=lambda tile: (tile.box.top, tile.box.left))
 
-		for dupe in dupes:
-			tiles.remove(dupe)
+		new_tiles: list[Tile] = []
+		duplicates: list[Tile] = []
+		PIXEL_EPSILON: int = 5
+		for tile_index, tile in enumerate(sorted_inferred_tiles):
+			for _, other_tile in enumerate(sorted_inferred_tiles):
+				if tile != other_tile and (tile.box is not None) and (other_tile.box is not None):
+					if abs(other_tile.box.left - tile.box.left) < PIXEL_EPSILON\
+						and abs(other_tile.box.top - tile.box.top) < PIXEL_EPSILON\
+						and other_tile not in duplicates:
+							duplicates.append(other_tile)
 
-		sorted_tiles = sorted(tiles, key=lambda tile: tile[0].top)
+			if tile not in duplicates:
+				new_tiles.append(tile)
+			tile_index += 1
 
-		rows = [[] for _ in range(9)]
-		for row in rows:
-			for tile in sorted_tiles:
-				if abs(tile[0].top - sorted_tiles[0][0].top) < TILE_SORT_LENIENCY:
-					row.append(tile)
-			for tile in row:
-				sorted_tiles.remove(tile)
 
-		sorted_rows = sorted(rows, key=lambda row: row[0][0].top)
+		new_rows: list[list[Tile]] = []
+		last_box_top = -999
+		new_row: list[Tile] = []
+		for tile in new_tiles:
+			if abs(last_box_top - tile.box.top) < PIXEL_EPSILON:
+				new_row.append(tile)
+			else:
+				new_rows.append(new_row)
+				new_row = []
 
-		for i in range(len(sorted_rows)):
-			sorted_rows[i] = sorted(sorted_rows[i], key=lambda tile: tile[0].left)
+		for row_index, row in enumerate(new_rows):
+			for col_index, tile in enumerate(row):
+				self.grid[row_index][col_index] = tile
 
-		for row in range(len(sorted_rows)):
-			for col in range(len(sorted_rows[row])):
-				self.tiles[row][col] = sorted_rows[row][col]
-
-	def find_next_tile(self):
-		for y in range(len(self.tiles)):
-			for x in range(len(self.tiles[y])):
-				if self.tiles[y][x][1] == "gloom":
-					print(self.tiles[y][x])
-					neighbors = self.get_neighboring_tiles(self.tiles[y][x])
+	def find_next_tile(self) -> Tile | None:
+		for _, row in enumerate(self.grid):
+			for __, tile in enumerate(row):
+				if tile.kind is TileKind.GLIMMER:
+					print(f"found glimmer: {tile}")
+					neighbors = self.get_neighboring_tiles(tile=tile)
 					if neighbors[5]:
 						return neighbors[5]
-		if self.solving_terminal == False:
+		if self.solving_terminal is False:
 			print("Time to start solving this terminal!")
-			self.solving_terminal = True
 			self.solve_terminal()
+			self.solving_terminal = True
 			return self.find_next_tile()
-		else :
-			print("Done!")
-			self.isSolved = True
+		else:
+			print("Solved!")
+			self.is_solved = True
+			return None
 
-	def get_neighboring_tiles(self, tile):
-		indices = self.get_tile_indices(tile)
-		neighbors = []
+	def get_neighboring_tiles(self, tile: Tile) -> list[Tile]:
+		[x, y] = self.get_tile_coordinates(tile)
+		neighbors: list[Tile] = []
 		top_half_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (0, 1), (1, 1))
 		middle_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (-1, 1), (0, 1))
 		bottom_half_directions = ((0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1))
-		if indices[1] < 4:
+		directions: tuple[tuple[int, int], ...] = ()
+		if y < 4:
 			directions = top_half_directions
-		elif indices[1] == 4:
+		elif y == 4:
 			directions = middle_directions
-		elif indices[1] > 4:
+		elif y > 4:
 			directions = bottom_half_directions
-		for direction in directions:
-			neighbor_indices = (indices[0] + direction[0], indices[1] + direction[1])
-			if neighbor_indices[1] in range(0, len(self.tiles)):
-				if neighbor_indices[0] in range(0, len(self.tiles[neighbor_indices[1]])):
+		for [x_delta, y_delta] in directions:
+			(neighbor_x, neighbor_y) = (x + x_delta, y + y_delta)
+			if neighbor_y in range(0, len(self.grid)):
+				if neighbor_x in range(0, len(self.grid[neighbor_y])):
 					neighbors.append(
-						self.tiles[neighbor_indices[1]][neighbor_indices[0]]
+						self.grid[neighbor_y][neighbor_x]
 					)
-				else :
-					neighbors.append(None)
-			else :
-				neighbors.append(None)
+			# 	else:
+			# 		neighbors.append(Tile())
+			# else:
+			# 	neighbors.append(Tile())
 		return neighbors
 
 	def solve_terminal(self):
+		WIN_TILE_KIND = TileKind.GLIMMER
 		terminal_row = (
-			1 if self.tiles[8][0][1] == "gloom" else 0,
-			1 if self.tiles[8][1][1] == "gloom" else 0,
-			1 if self.tiles[8][2][1] == "gloom" else 0,
-			1 if self.tiles[8][3][1] == "gloom" else 0,
-			1 if self.tiles[8][4][1] == "gloom" else 0,
-			1 if self.tiles[7][5][1] == "gloom" else 0,
-			1 if self.tiles[6][6][1] == "gloom" else 0,
-			1 if self.tiles[5][7][1] == "gloom" else 0,
-			1 if self.tiles[4][8][1] == "gloom" else 0,
+			1 if self.grid[8][0].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[8][1].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[8][2].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[8][3].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[8][4].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[7][5].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[6][6].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[5][7].kind == WIN_TILE_KIND else 0,
+			1 if self.grid[4][8].kind == WIN_TILE_KIND else 0,
 		)
 
-		testing_rows = [[0 for _ in range(9)] for x in range(9)]
+		testing_rows = [[0 for _ in range(9)] for __ in range(9)]
 
-		for y in range(len(testing_rows)):
-			row = testing_rows[y]
+		for y, row in enumerate(testing_rows):
 			compare = terminal_row[y]
 			if compare == 1:
-				for x in range(len(row)):
-					testing_rows[y][x] = TERMINAL_BOARD_PATTERNS[y][x]
+				for x, tile in enumerate(row):
+					row[x] = TERMINAL_BOARD_PATTERNS[y][x]
 
 		solution_row = [0 for _ in range(9)]
 		for x in range(len(solution_row)):
@@ -187,40 +168,43 @@ class GameBoard:
 				solution_row[x] = 1
 
 		beginning_row = (
-			self.tiles[4][0],
-			self.tiles[3][0],
-			self.tiles[2][0],
-			self.tiles[1][0],
-			self.tiles[0][0],
-			self.tiles[0][1],
-			self.tiles[0][2],
-			self.tiles[0][3],
-			self.tiles[0][4]
+			self.grid[4][0],
+			self.grid[3][0],
+			self.grid[2][0],
+			self.grid[1][0],
+			self.grid[0][0],
+			self.grid[0][1],
+			self.grid[0][2],
+			self.grid[0][3],
+			self.grid[0][4]
 		)
 
-		tile_clicks = []
+		tiles_to_click: list[Tile] = []
 		for x in range(len(solution_row)):
 			if solution_row[x] == 1:
-				tile_clicks.append(beginning_row[x])
+				print(f'solution row is {solution_row} and beginning_row is {beginning_row}')
+				tiles_to_click.append(beginning_row[x])
 
-		for tile in tile_clicks:
+		for tile in tiles_to_click:
 			self.click_tile(tile)
 
-	def get_tile_indices(self, tile):
-		for y in range(len(self.tiles)):
-			for x in range(len(self.tiles[y])):
-				if self.tiles[y][x] == tile:
+	def get_tile_coordinates(self, tile: Tile) -> tuple[int, int]:
+		for y, row in enumerate(self.grid):
+			for x, tile in enumerate(row):
+				if self.grid[y][x] == tile:
 					return (x, y)
-		return None
+		raise ValueError(f"unable to get tile coordinates for tile:{tile}")
 
-	def click_tile(self, tile):
+	def click_tile(self, tile: Tile):
 		print("Clicking tile:")
 		print(tile)
 		delay = CLICK_DELAY
 		if BAN_EVASION_MODE:
 			delay += random.uniform(0, DELAY_FUZZING)
 		time.sleep(delay)
-		center = pyautogui.center(tile[0])
+		if tile.box is None:
+			raise ValueError
+		center = pyautogui.center(tile.box)
 		if BAN_EVASION_MODE:
 			center = (
 				center[0] + random.randint(-HOVER_FUZZING[0], HOVER_FUZZING[0]), 
@@ -228,26 +212,33 @@ class GameBoard:
 			)
 		print(center)
 		pyautogui.click(center[0], center[1])
-		neighbors = self.get_neighboring_tiles(tile)
+		neighbors: list[Tile] = self.get_neighboring_tiles(tile)
 		neighbors.append(tile)
 		for neighbor in neighbors:
-			if neighbor == None:
+			if neighbor.kind is TileKind.UNKNOWN:
 				continue
-			elif neighbor[1] == "gloom":
-				neighbor[1] = "glimmer"
-			elif neighbor[1] == "glimmer":
-				neighbor[1] = "gloom"
+			elif neighbor.kind == TileKind.GLOOM:
+				neighbor.kind = TileKind.GLIMMER
+			elif neighbor.kind == TileKind.GLIMMER:
+				neighbor.kind = TileKind.GLOOM
 		# pyautogui.moveTo(MOUSE_EXIT_BOX[0] + 10, MOUSE_EXIT_BOX[1] + 10)
 		print(self)
 
 def solve_board():
-	gameBoard = GameBoard()
-	print(gameBoard)
-	while(not gameBoard.isSolved):
-		next_tile = gameBoard.find_next_tile()
+	game_board = GameBoard()
+	game_board_printed = str(game_board)
+	print(game_board_printed)
+	move_count = 0
+	while(not game_board.is_solved):
+		move_count += 1
+		# if move_count % 7 == 0:
+		# 	game_board = GameBoard()
+		game_board_printed = str(game_board)
+		print(game_board_printed)
+		next_tile = game_board.find_next_tile()
 		print(next_tile)
 		if next_tile is not None:
-			gameBoard.click_tile(next_tile)
+			game_board.click_tile(next_tile)
 		if keyboard.is_pressed(END_SCRIPT_KEY):
 			print("Key press detected! Aborting script...")
 			break
