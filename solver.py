@@ -115,7 +115,7 @@ class GameBoard:
 		for row in self.grid:
 			for tile in row:
 				if tile.kind != self.WIN_TILE_KIND:
-					print(f"found non-winning tile:\n{tile}\n{tile.box}, {tile.kind}")
+					print(f"found non-winning tile:\n{tile}\n{tile.box}, {tile.kind}\n{self.get_tile_coordinates(tile)}")
 					neighbors = self.get_neighboring_tiles(center_tile=tile)
 					if neighbors[-1]:
 						return neighbors[-1]
@@ -231,8 +231,7 @@ class GameBoard:
 			elif neighbor.kind == TileKind.GLIMMER:
 				neighbor.kind = TileKind.GLOOM
 		# pyautogui.moveTo(MOUSE_EXIT_BOX[0] + 10, MOUSE_EXIT_BOX[1] + 10)
-		(x, y) = self.get_tile_coordinates(tile)
-		print(f"clicked tile: {tile.box}, {tile.kind}\ngrid[{y}][{x}]\n{self}")
+		print(f"clicked tile: {tile.box}, {tile.kind}\n{self.get_tile_coordinates(tile)}\n{self}")
 
 def solve_board():
 	game_board = GameBoard()
