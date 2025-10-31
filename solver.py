@@ -207,7 +207,6 @@ class GameBoard:
 		raise ValueError(f"unable to get tile coordinates for tile:{tile}")
 
 	def click_tile(self, tile: Tile):
-		print(f"Clicking tile: {tile.box}: {tile.kind}")
 		delay = CLICK_DELAY
 		if BAN_EVASION_MODE:
 			delay += random.uniform(0, DELAY_FUZZING)
@@ -232,7 +231,8 @@ class GameBoard:
 			elif neighbor.kind == TileKind.GLIMMER:
 				neighbor.kind = TileKind.GLOOM
 		# pyautogui.moveTo(MOUSE_EXIT_BOX[0] + 10, MOUSE_EXIT_BOX[1] + 10)
-		print(f"clicked tile: {tile.box}, {tile.kind}\n{self}")
+		(x, y) = self.get_tile_coordinates(tile)
+		print(f"clicked tile: {tile.box}, {tile.kind}\ngrid[{y}][{x}]\n{self}")
 
 def solve_board():
 	game_board = GameBoard()
