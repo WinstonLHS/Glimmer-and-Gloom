@@ -21,6 +21,7 @@ class Tile:
 
 class GameBoard:
 	def __init__(self):
+		self.WIN_TILE_KIND = TileKind.GLIMMER
 		self.grid: list[list[Tile]] = [
 			[Tile()] * 5,
 			[Tile()] * 6,
@@ -32,9 +33,15 @@ class GameBoard:
 			[Tile()] * 6,
 			[Tile()] * 5,
 		]
-		self.solving_terminal = False
-		self.is_solved = False
 		self.find_all()
+	
+	def is_solved(self) -> bool:
+		solved_tile_count = 0
+		for row in self.grid:
+			for tile in row:
+				if tile.kind == self.WIN_TILE_KIND:
+					solved_tile_count += 1
+		return solved_tile_count == 61
 
 	def __str__(self):
 		text = ""
@@ -107,23 +114,21 @@ class GameBoard:
 	def find_next_tile(self) -> Tile | None:
 		for row in self.grid:
 			for tile in row:
-				if tile.kind is TileKind.GLIMMER:
-					print(f"found glimmer:\n{tile}\n{tile.box}, {tile.kind}")
-					neighbors = self.get_neighboring_tiles(tile=tile)
+				if tile.kind != self.WIN_TILE_KIND:
+					print(f"found non-winning tile:\n{tile}\n{tile.box}, {tile.kind}")
+					neighbors = self.get_neighboring_tiles(center_tile=tile)
 					if neighbors[-1]:
 						return neighbors[-1]
-		if self.solving_terminal is False:
+		if self.is_solved():
 			print("Time to start solving this terminal!")
 			self.solve_terminal()
-			self.solving_terminal = True
 			return self.find_next_tile()
 		else:
 			print("Solved!")
-			self.is_solved = True
 			return None
 
-	def get_neighboring_tiles(self, tile: Tile) -> list[Tile | None]:
-		[x, y] = self.get_tile_coordinates(tile)
+	def get_neighboring_tiles(self, center_tile: Tile) -> list[Tile | None]:
+		[x, y] = self.get_tile_coordinates(center_tile)
 		neighbors: list[Tile | None] = []
 		top_half_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (0, 1), (1, 1))
 		middle_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (-1, 1), (0, 1))
@@ -146,18 +151,17 @@ class GameBoard:
 		return neighbors
 
 	def solve_terminal(self):
-		WIN_TILE_KIND = TileKind.GLIMMER
-		terminal_row = (
-			1 if self.grid[8][0].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[8][1].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[8][2].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[8][3].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[8][4].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[7][5].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[6][6].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[5][7].kind == WIN_TILE_KIND else 0,
-			1 if self.grid[4][8].kind == WIN_TILE_KIND else 0,
-		)
+		terminal_row = [
+			1 if self.grid[8][0].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[8][1].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[8][2].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[8][3].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[8][4].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[7][5].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[6][6].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[5][7].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[4][8].kind == self.WIN_TILE_KIND else 0,
+		]
 
 		testing_rows = [[0 for _ in range(9)] for __ in range(9)]
 
@@ -174,7 +178,7 @@ class GameBoard:
 			if row_sum % 2 != 0:
 				solution_row[x] = 1
 
-		beginning_row = (
+		beginning_row = [
 			self.grid[4][0],
 			self.grid[3][0],
 			self.grid[2][0],
@@ -184,7 +188,7 @@ class GameBoard:
 			self.grid[0][2],
 			self.grid[0][3],
 			self.grid[0][4]
-		)
+		]
 
 		tiles_to_click: list[Tile] = []
 		for x, testing_row in enumerate(solution_row):
@@ -228,14 +232,13 @@ class GameBoard:
 			elif neighbor.kind == TileKind.GLIMMER:
 				neighbor.kind = TileKind.GLOOM
 		# pyautogui.moveTo(MOUSE_EXIT_BOX[0] + 10, MOUSE_EXIT_BOX[1] + 10)
-		print(self)
+		print(f"clicked tile: {tile.box}, {tile.kind}\n{self}")
 
 def solve_board():
 	game_board = GameBoard()
-	move_count = 0
-	while(not game_board.is_solved):
-		move_count += 1
-		if move_count % 5 == 0:
+	move_counter = 0
+	while(not game_board.is_solved()):
+		if move_counter % 7 == 0:
 			game_board = GameBoard()
 		print(f"game board:\n{game_board}")
 		next_tile = game_board.find_next_tile()
@@ -245,6 +248,7 @@ def solve_board():
 		if keyboard.is_pressed(END_SCRIPT_KEY):
 			print("Key press detected! Aborting script...")
 			break
+		move_counter += 1
 	return
 
 if __name__ == "__main__":
