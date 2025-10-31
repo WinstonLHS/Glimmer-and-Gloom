@@ -128,7 +128,7 @@ class GameBoard:
 			return None
 
 	def get_neighboring_tiles(self, center_tile: Tile) -> list[Tile | None]:
-		[x, y] = self.get_tile_coordinates(center_tile)
+		(x, y) = self.get_tile_coordinates(center_tile)
 		neighbors: list[Tile | None] = []
 		top_half_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (0, 1), (1, 1))
 		middle_directions = ((-1, -1), (0, -1), (-1, 0), (1, 0), (-1, 1), (0, 1))
