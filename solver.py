@@ -68,9 +68,11 @@ class GameBoard:
 		duplicates: set[Tile] = set()
 		for tile_index, tile in enumerate(sorted_tiles):
 			for other_tile in sorted_tiles[tile_index + 1:]:
-				if tile != other_tile and (tile.box is not None) and (other_tile.box is not None):
-					if abs(other_tile.box.left - tile.box.left) < PIXEL_EPSILON\
-						and abs(other_tile.box.top - tile.box.top) < PIXEL_EPSILON\
+				if tile != other_tile\
+					and (tile.box is not None)\
+					and (other_tile.box is not None):
+					if abs(other_tile.box.left - tile.box.left) < (PIXEL_EPSILON + 1)\
+						and abs(other_tile.box.top - tile.box.top) < (PIXEL_EPSILON + 1)\
 						and other_tile not in duplicates:
 							duplicates.add(other_tile)
 			tile_index += 1
@@ -79,23 +81,37 @@ class GameBoard:
 			if tile not in duplicates:
 				deduped_tiles.append(tile)
 
+		y_sorted_tiles = sorted(deduped_tiles, key=lambda tile: tile.box.top // PIXEL_EPSILON if tile.box is not None else -1)
+		tiles_in_y: list[Tile] = [y_sorted_tiles[0]]
+		y_x_sorted_tiles: list[list[Tile]] = []
+		for tile in y_sorted_tiles[1:]:
+			if abs(tile.box.top - tiles_in_y[0].box.top) < (PIXEL_EPSILON + 1):
+				tiles_in_y.append(tile)
+			else:
+				x_sorted_tiles = sorted(tiles_in_y, key=lambda tile: tile.box.left // PIXEL_EPSILON)
+				y_x_sorted_tiles.append(x_sorted_tiles)
+				tiles_in_y = [tile]
+
+		x_sorted_tiles = sorted(tiles_in_y, key=lambda tile: tile.box.left // PIXEL_EPSILON)
+		y_x_sorted_tiles.append(x_sorted_tiles)
+
 		if len(deduped_tiles) != 61:
 			raise ValueError("Unable to infer all tiles on the board!")
 
 		tile_index = 0
 		for row_index, row in enumerate(self.grid):
-			for col_index, tile in enumerate(self.grid[row_index]):
-				self.grid[row_index][col_index] = deduped_tiles[tile_index]
+			for col_index, tile in enumerate(row):
+				self.grid[row_index][col_index] = y_x_sorted_tiles[row_index][col_index]
 				tile_index += 1
 
 	def find_next_tile(self) -> Tile | None:
-		for _, row in enumerate(self.grid):
-			for __, tile in enumerate(row):
-				if tile.kind is TileKind.GLOOM:
-					print(f"found gloom: {tile.box}, {tile.kind}")
+		for row in self.grid:
+			for tile in row:
+				if tile.kind is TileKind.GLIMMER:
+					print(f"found glimmer:\n{tile}\n{tile.box}, {tile.kind}")
 					neighbors = self.get_neighboring_tiles(tile=tile)
-					if neighbors[5]:
-						return neighbors[5]
+					if neighbors[-1]:
+						return neighbors[-1]
 		if self.solving_terminal is False:
 			print("Time to start solving this terminal!")
 			self.solve_terminal()
@@ -145,17 +161,16 @@ class GameBoard:
 
 		testing_rows = [[0 for _ in range(9)] for __ in range(9)]
 
-		for y, hit in enumerate(testing_rows):
-			compare = terminal_row[y]
-			if compare == 1:
-				for x, tile in enumerate(hit):
-					hit[x] = TERMINAL_BOARD_PATTERNS[y][x]
+		for y, testing_row in enumerate(testing_rows):
+			if terminal_row[y] == 1:
+				for x, _ in enumerate(testing_row):
+					testing_row[x] = TERMINAL_BOARD_PATTERNS[y][x]
 
 		solution_row = [0 for _ in range(9)]
 		for x, _ in enumerate(solution_row):
 			row_sum = 0
-			for hit in testing_rows:
-				row_sum += hit[x]
+			for testing_row in testing_rows:
+				row_sum += testing_row[x]
 			if row_sum % 2 != 0:
 				solution_row[x] = 1
 
@@ -172,8 +187,8 @@ class GameBoard:
 		)
 
 		tiles_to_click: list[Tile] = []
-		for x, hit in enumerate(solution_row):
-			if hit == 1:
+		for x, testing_row in enumerate(solution_row):
+			if testing_row == 1:
 				tile_to_click = beginning_row[x]
 				tiles_to_click.append(tile_to_click)
 
@@ -206,7 +221,7 @@ class GameBoard:
 		neighbors: list[Tile | None] = self.get_neighboring_tiles(tile)
 		neighbors.append(tile)
 		for neighbor in neighbors:
-			if neighbor is None:
+			if neighbor is None or neighbor.kind is TileKind.UNKNOWN:
 				continue
 			elif neighbor.kind == TileKind.GLOOM:
 				neighbor.kind = TileKind.GLIMMER
@@ -217,16 +232,15 @@ class GameBoard:
 
 def solve_board():
 	game_board = GameBoard()
-	print(f"game board:\n{game_board}")
 	move_count = 0
 	while(not game_board.is_solved):
 		move_count += 1
-		if move_count % 7 == 0:
+		if move_count % 5 == 0:
 			game_board = GameBoard()
 		print(f"game board:\n{game_board}")
 		next_tile = game_board.find_next_tile()
-		print(next_tile)
 		if next_tile is not None and next_tile.box is not None:
+			print(f"clicking next tile:\n{next_tile}")
 			game_board.click_tile(next_tile)
 		if keyboard.is_pressed(END_SCRIPT_KEY):
 			print("Key press detected! Aborting script...")
