@@ -1,6 +1,6 @@
 PLAY_FILE_LOC = "play.png" # The local file location of the play button image
 GAME_DELAY = 1.54 # How much we wait before starting a new game.
-NUM_LOOPS = 100 # The maximum number of games we'll play. After this number, the script will quit.
+NUM_LOOPS = 19 # The maximum number of games we'll play. After this number, the script will quit.
 
 CLICK_DELAY = .1 # How much our default delay is before the next click is made.
 
