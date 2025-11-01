@@ -20,8 +20,9 @@ class Tile:
 		self.box: Box | None = box
 
 class GameBoard:
-	def __init__(self):
+	def __init__(self, is_solving_terminal: bool = False):
 		self.WIN_TILE_KIND = TileKind.GLIMMER
+		self.LOSS_TILE_KIND = TileKind.GLOOM
 		self.grid: list[list[Tile]] = [
 			[Tile()] * 5,
 			[Tile()] * 6,
@@ -34,6 +35,8 @@ class GameBoard:
 			[Tile()] * 5,
 		]
 		self.find_all()
+		self.is_solving_terminal = is_solving_terminal
+		self.is_done = self.is_solved()
 	
 	def is_solved(self) -> bool:
 		solved_tile_count = 0
@@ -117,15 +120,22 @@ class GameBoard:
 				if tile.kind != self.WIN_TILE_KIND:
 					print(f"found non-winning tile:\n{tile}\n{tile.box}, {tile.kind}\n{self.get_tile_coordinates(tile)}")
 					neighbors = self.get_neighboring_tiles(center_tile=tile)
-					if neighbors[-1]:
-						return neighbors[-1]
-		if self.is_solved():
+					next_neighbor = neighbors[5]
+					if next_neighbor is not None and next_neighbor.kind != TileKind.UNKNOWN:
+						return next_neighbor
+		
+		if not self.is_solving_terminal:
 			print("Time to start solving this terminal!")
+			self.is_solving_terminal = True
 			self.solve_terminal()
 			return self.find_next_tile()
-		else:
+		
+		if self.is_solved():
 			print("Solved!")
 			return None
+
+		self.is_done = self.is_solved()
+		return None
 
 	def get_neighboring_tiles(self, center_tile: Tile) -> list[Tile | None]:
 		(x, y) = self.get_tile_coordinates(center_tile)
@@ -152,15 +162,15 @@ class GameBoard:
 
 	def solve_terminal(self):
 		terminal_row = [
-			1 if self.grid[8][0].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[8][1].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[8][2].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[8][3].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[8][4].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[7][5].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[6][6].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[5][7].kind == self.WIN_TILE_KIND else 0,
-			1 if self.grid[4][8].kind == self.WIN_TILE_KIND else 0,
+			1 if self.grid[8][0].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[8][1].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[8][2].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[8][3].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[8][4].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[7][5].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[6][6].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[5][7].kind == self.LOSS_TILE_KIND else 0,
+			1 if self.grid[4][8].kind == self.LOSS_TILE_KIND else 0,
 		]
 
 		testing_rows = [[0 for _ in range(9)] for __ in range(9)]
@@ -199,12 +209,12 @@ class GameBoard:
 		for tile in tiles_to_click:
 			self.click_tile(tile)
 
-	def get_tile_coordinates(self, tile: Tile) -> tuple[int, int]:
+	def get_tile_coordinates(self, target_tile: Tile) -> tuple[int, int]:
 		for y, row in enumerate(self.grid):
 			for x, tile in enumerate(row):
-				if self.grid[y][x] == tile:
+				if tile == target_tile:
 					return (x, y)
-		raise ValueError(f"unable to get tile coordinates for tile:{tile}")
+		raise ValueError(f"unable to get tile coordinates for tile:{target_tile}")
 
 	def click_tile(self, tile: Tile):
 		delay = CLICK_DELAY
@@ -221,6 +231,7 @@ class GameBoard:
 			)
 		print(f"center: {center}")
 		pyautogui.click(center[0], center[1])
+		print(f"clicked tile: {tile.box}, {tile.kind}\n{self.get_tile_coordinates(tile)}\n{self}")
 		neighbors: list[Tile | None] = self.get_neighboring_tiles(tile)
 		neighbors.append(tile)
 		for neighbor in neighbors:
@@ -231,18 +242,18 @@ class GameBoard:
 			elif neighbor.kind == TileKind.GLIMMER:
 				neighbor.kind = TileKind.GLOOM
 		# pyautogui.moveTo(MOUSE_EXIT_BOX[0] + 10, MOUSE_EXIT_BOX[1] + 10)
-		print(f"clicked tile: {tile.box}, {tile.kind}\n{self.get_tile_coordinates(tile)}\n{self}")
 
 def solve_board():
 	game_board = GameBoard()
 	move_counter = 0
 	while(not game_board.is_solved()):
-		if move_counter % 7 == 0:
+		if move_counter % 15 == 0:
+			time.sleep(GAME_DELAY)
+			print('re-scanning gameboard...')
 			game_board = GameBoard()
 		print(f"game board:\n{game_board}")
 		next_tile = game_board.find_next_tile()
 		if next_tile is not None and next_tile.box is not None:
-			print(f"clicking next tile:\n{next_tile}")
 			game_board.click_tile(next_tile)
 		if keyboard.is_pressed(END_SCRIPT_KEY):
 			print("Key press detected! Aborting script...")
